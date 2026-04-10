@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Google SERP Copier",
+  "version": "1.0.0",
+  "description": "Google検索結果のタイトルとURLを一括コピーするChrome拡張機能",
+
+  "permissions": [
+    "activeTab",
+    "clipboardWrite"
+  ],
+
+  "host_permissions": [
+    "https://www.google.com/*",
+    "https://www.google.co.jp/*"
+  ],
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Google SERP Copier"
+  },
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
