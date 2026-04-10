@@ -60,7 +60,16 @@ document.addEventListener('DOMContentLoaded', () => {
         // 成功: URL一覧を表示
         fetchedUrls = response.urls || [];
         renderResults(fetchedUrls);
-        showStatus('success', `${fetchedUrls.length} 件のURLを取得しました。`);
+
+        // デバッグ情報があれば件数の後ろに付記（0件の場合は特に詳細を表示）
+        if (fetchedUrls.length === 0 && response.debugInfo) {
+          showStatus('error',
+            `0件でした。詳細: ${response.debugInfo}\n` +
+            `※ Service Worker のコンソールも確認してください（chrome://extensions）`
+          );
+        } else {
+          showStatus('success', `${fetchedUrls.length} 件のURLを取得しました。`);
+        }
       }
     } catch (err) {
       showStatus('error', `通信エラー: ${err.message}`);

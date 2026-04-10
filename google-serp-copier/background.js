@@ -14,27 +14,23 @@ const FETCH_DELAY_MS = 1500;
 const RESULTS_PER_PAGE = 10;
 
 /**
- * 除外するURLのプレフィックスリスト
- * Google内部リンクや広告・サービスページを弾く
+ * 除外するドメインのリスト（部分一致）
+ * Google内部リンク・広告・Googleサービスページを弾く
  */
-const EXCLUDED_PREFIXES = [
-  'https://www.google.',
-  'http://www.google.',
-  'https://google.',
-  'http://google.',
-  'https://accounts.google.',
-  'https://support.google.',
-  'https://maps.google.',
-  'https://play.google.',
-  '/search',
-  '/maps',
-  '/images',
-  '/shopping',
-  '/news',
-  '/finance',
-  '/travel',
-  '#',
-  'javascript:',
+const EXCLUDED_DOMAINS = [
+  'google.com',
+  'google.co.jp',
+  'google.com.br',
+  'google.co.uk',
+  'googleapis.com',
+  'googleusercontent.com',
+  'googlevideo.com',
+  'gstatic.com',
+  'goo.gl',
+  'accounts.google',
+  'support.google',
+  'policies.google',
+  'myaccount.google',
 ];
 
 // -------------------------------------------------------
@@ -50,12 +46,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // async関数はリスナー内で直接 await できないため即時実行関数で対処
     (async () => {
       try {
-        const urls = await fetchAllPages(
+        const result = await fetchAllPages(
           message.keyword,
           message.startRank,
           message.endRank
         );
-        sendResponse({ urls });
+        sendResponse(result);
       } catch (err) {
         sendResponse({ error: err.message });
       }
@@ -76,16 +72,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  * @param {string} keyword   - 検索キーワード
  * @param {number} startRank - 取得開始順位（1始まり）
  * @param {number} endRank   - 取得終了順位（1始まり）
- * @returns {Promise<string[]>} - 重複なし外部URLの配列
+ * @returns {Promise<{urls: string[], debugInfo: string}>}
  */
 async function fetchAllPages(keyword, startRank, endRank) {
-  // startRankとendRankから必要なページのstart値（0始まり）を算出
-  // 例: startRank=51 → startOffset=50, endRank=100 → endOffset=99
   const startOffset = startRank - 1;
   const endOffset   = endRank - 1;
 
-  // ページのstart値リストを生成（10件ずつ）
-  // 例: startOffset=50, endOffset=99 → [50, 60, 70, 80, 90]
+  // 取得するページのstartパラメータ一覧を生成
   const pageStarts = [];
   for (
     let offset = Math.floor(startOffset / RESULTS_PER_PAGE) * RESULTS_PER_PAGE;
@@ -97,16 +90,38 @@ async function fetchAllPages(keyword, startRank, endRank) {
 
   const totalPages = pageStarts.length;
   const allUrls    = [];
-  const seenUrls   = new Set(); // 重複除外用
+  const seenUrls   = new Set();
+  const debugLines = []; // デバッグ情報（Service Workerコンソール + ポップアップに表示）
 
   for (let i = 0; i < pageStarts.length; i++) {
     const pageStart = pageStarts[i];
 
-    // 進捗をポップアップへ通知
     notifyProgress(`ページ ${i + 1}/${totalPages} を取得中...`);
 
-    const html = await fetchGooglePage(keyword, pageStart);
+    const { html, finalUrl, status } = await fetchGooglePage(keyword, pageStart);
+
+    // ボット・CAPTCHA検出
+    if (isBotDetectionPage(html)) {
+      throw new Error(
+        'Googleがbotとして検出しました（CAPTCHA）。\n' +
+        'しばらく待ってから再試行してください。'
+      );
+    }
+
+    // 同意ページへのリダイレクト検出
+    if (finalUrl.includes('consent.google') || finalUrl.includes('/sorry/')) {
+      throw new Error(
+        'Googleの同意/ブロックページにリダイレクトされました。\n' +
+        'ブラウザでGoogle検索を一度開いてから再試行してください。'
+      );
+    }
+
     const urls = extractUrls(html);
+
+    // デバッグ情報を記録（ページごと）
+    const debugMsg = `p${i + 1}: HTML=${html.length}B, 抽出=${urls.length}件, status=${status}`;
+    debugLines.push(debugMsg);
+    console.log(`[SERP Copier] ${debugMsg}`);
 
     for (const url of urls) {
       if (!seenUrls.has(url)) {
@@ -115,17 +130,22 @@ async function fetchAllPages(keyword, startRank, endRank) {
       }
     }
 
-    // 最終ページ以外はディレイを挟む
     if (i < pageStarts.length - 1) {
       await delay(FETCH_DELAY_MS);
     }
   }
 
-  // startRank〜endRankの範囲内にあるURLのみを切り出す
-  // （ページ境界をまたぐ場合、前後に余分な結果が含まれることがある）
+  // 指定順位範囲に対応する部分を切り出す
   const sliceStart = startOffset % RESULTS_PER_PAGE;
   const sliceEnd   = sliceStart + (endRank - startRank + 1);
-  return allUrls.slice(sliceStart, sliceEnd);
+  const urls       = allUrls.slice(sliceStart, sliceEnd);
+
+  console.log(`[SERP Copier] 完了: allUrls=${allUrls.length}件 → slice(${sliceStart},${sliceEnd})=${urls.length}件`);
+
+  return {
+    urls,
+    debugInfo: debugLines.join(' | '),
+  };
 }
 
 // -------------------------------------------------------
@@ -133,78 +153,106 @@ async function fetchAllPages(keyword, startRank, endRank) {
 // -------------------------------------------------------
 
 /**
- * Google検索結果ページをfetchして生HTMLを返す
+ * Google検索結果ページをfetchして生HTML・最終URL・ステータスを返す
  *
  * @param {string} keyword - 検索キーワード
  * @param {number} start   - 検索結果の開始インデックス（0始まり）
- * @returns {Promise<string>} - レスポンスHTMLテキスト
+ * @returns {Promise<{html: string, finalUrl: string, status: number}>}
  */
 async function fetchGooglePage(keyword, start) {
-  const url = `https://www.google.co.jp/search?q=${encodeURIComponent(keyword)}&start=${start}&num=${RESULTS_PER_PAGE}&hl=ja`;
+  // pws=0: パーソナライズ無効  filter=0: 類似結果フィルタ無効
+  const url = (
+    `https://www.google.co.jp/search` +
+    `?q=${encodeURIComponent(keyword)}` +
+    `&start=${start}` +
+    `&num=${RESULTS_PER_PAGE}` +
+    `&hl=ja` +
+    `&pws=0` +
+    `&filter=0`
+  );
 
   const response = await fetch(url, {
     // User-Agent はChromeが自動付与するため指定不要
     headers: {
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'ja,en-US;q=0.7,en;q=0.3',
+      'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
+      'Cache-Control': 'no-cache',
     },
-    credentials: 'omit', // クッキーを送らない（セッション汚染防止）
+    credentials: 'omit',
   });
 
   if (!response.ok) {
     throw new Error(`HTTPエラー: ${response.status} ${response.statusText}`);
   }
 
-  return response.text();
+  const html = await response.text();
+  return { html, finalUrl: response.url, status: response.status };
 }
 
 // -------------------------------------------------------
-// URLの抽出（正規表現ベース）
+// URLの抽出（正規表現ベース・複数パターン同時実行）
 // -------------------------------------------------------
 
 /**
  * Google検索結果HTMLからオーガニック検索結果のURLを抽出する
- * Service WorkerではDOMParserが使えないため正規表現を使用
+ *
+ * 抽出パターン（全パターンを同時実行、Setで重複排除）:
+ *   A: href="/url?q=https://..."  通常形式（ダブル・シングルクォート両対応）
+ *   B: href="/url?q=https%3A%2F%2F..."  URLエンコード形式
+ *   C: href="https://..."  直接リンク形式（ダブル・シングルクォート両対応）
+ *   D: data-href="https://..."  data属性形式
  *
  * @param {string} html - Google検索結果ページのHTMLテキスト
- * @returns {string[]} - 外部URLの配列（広告・重複・内部リンクを除外済み）
+ * @returns {string[]} - 外部URLの配列（重複・Google内部リンク除外済み）
  */
 function extractUrls(html) {
-  const urls = [];
+  const seen    = new Set();
+  const results = [];
 
-  // Googleはオーガニック結果のリンクを
-  // <a href="/url?q=実際のURL&..." または <a href="https://..."> の形で出力する
-  // パターン1: /url?q=... 形式（多くのオーガニック結果）
-  const urlQPattern = /href="\/url\?q=(https?:\/\/[^"&]+)/g;
-  let match;
-  while ((match = urlQPattern.exec(html)) !== null) {
+  /**
+   * URLを正規化・検証してリストに追加するヘルパー
+   * @param {string} rawUrl - 未デコードのURL文字列
+   */
+  function tryAdd(rawUrl) {
+    if (!rawUrl) return;
     try {
-      const decoded = decodeURIComponent(match[1]);
-      if (isValidExternalUrl(decoded)) {
-        urls.push(decoded);
+      // HTMLエンティティ(&amp;)を戻してからURLデコード
+      const normalized = rawUrl.replace(/&amp;/g, '&').replace(/\\u002F/gi, '/');
+      const decoded    = decodeURIComponent(normalized);
+      // クリーンなURLを取得（余分なGoogleトラッキングパラメータ等は isValidExternalUrl で除外）
+      if (isValidExternalUrl(decoded) && !seen.has(decoded)) {
+        seen.add(decoded);
+        results.push(decoded);
       }
     } catch {
-      // デコードに失敗したURLはスキップ
+      // デコード失敗はスキップ
     }
   }
 
-  // パターン2: data-href や jsname 属性に含まれる直接URLも補完で拾う
-  // （パターン1で拾えなかった場合のフォールバック）
-  if (urls.length === 0) {
-    const directPattern = /href="(https?:\/\/(?!www\.google\.|google\.)[^"]+)"/g;
-    while ((match = directPattern.exec(html)) !== null) {
-      try {
-        const decoded = decodeURIComponent(match[1]);
-        if (isValidExternalUrl(decoded)) {
-          urls.push(decoded);
-        }
-      } catch {
-        // スキップ
-      }
-    }
-  }
+  let m;
 
-  return urls;
+  // --- パターンA: href="/url?q=https://..." （通常形式、ダブル・シングルクォート両対応） ---
+  // (?:[^"']*?&)? で "q=" より前のパラメータ（sa=U& 等）をオプションで読み飛ばす
+  const patA = /href=["']\/url\?(?:[^"']*?&)?q=(https?:\/\/[^"'&\s]+)/gi;
+  while ((m = patA.exec(html)) !== null) tryAdd(m[1]);
+
+  // --- パターンB: href="/url?q=https%3A%2F%2F..." （URLエンコード形式） ---
+  const patB = /href=["']\/url\?(?:[^"']*?&)?q=(https?%3A%2F%2F[^"'&\s]+)/gi;
+  while ((m = patB.exec(html)) !== null) tryAdd(m[1]);
+
+  // --- パターンC: href="https://..." または href='https://...' （直接リンク形式） ---
+  // ダブルクォート版
+  const patC1 = /href="(https?:\/\/[^"#\s]{10,})"/g;
+  while ((m = patC1.exec(html)) !== null) tryAdd(m[1]);
+  // シングルクォート版
+  const patC2 = /href='(https?:\/\/[^'#\s]{10,})'/g;
+  while ((m = patC2.exec(html)) !== null) tryAdd(m[1]);
+
+  // --- パターンD: data-href="https://..." 属性 ---
+  const patD = /data-href=["'](https?:\/\/[^"']+)["']/g;
+  while ((m = patD.exec(html)) !== null) tryAdd(m[1]);
+
+  return results;
 }
 
 /**
@@ -220,9 +268,17 @@ function isValidExternalUrl(url) {
     return false;
   }
 
-  // 除外プレフィックスに一致するものを弾く
-  for (const prefix of EXCLUDED_PREFIXES) {
-    if (url.startsWith(prefix)) {
+  // URLからドメイン部分を取り出す
+  let hostname;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    return false; // 不正なURLは除外
+  }
+
+  // 除外ドメインリストに一致するものを弾く
+  for (const excluded of EXCLUDED_DOMAINS) {
+    if (hostname === excluded || hostname.endsWith('.' + excluded)) {
       return false;
     }
   }
@@ -232,12 +288,31 @@ function isValidExternalUrl(url) {
     return false;
   }
 
-  // Googleトラッキングパラメータのみのリンクを除外
-  if (url.includes('google.com/url?') || url.includes('google.co.jp/url?')) {
+  // Googleリダイレクタ経由リンクを除外（/url?... 形式で残るもの）
+  if (/google\.[a-z.]+\/url\?/.test(url)) {
     return false;
   }
 
   return true;
+}
+
+/**
+ * ページがCAPTCHA/ボット検出ページかどうかを判定する
+ * @param {string} html
+ * @returns {boolean}
+ */
+function isBotDetectionPage(html) {
+  const indicators = [
+    'unusual traffic',
+    '/sorry/index',
+    'captcha',
+    'recaptcha',
+    'automated requests',
+    'detected unusual',
+    'www.google.com/sorry',
+  ];
+  const lower = html.toLowerCase();
+  return indicators.some(indicator => lower.includes(indicator));
 }
 
 // -------------------------------------------------------
@@ -249,7 +324,6 @@ function isValidExternalUrl(url) {
  * @param {string} text
  */
 function notifyProgress(text) {
-  // popup が開いていない場合はエラーになるが無視してよい
   chrome.runtime.sendMessage({ action: 'progress', text }).catch(() => {});
 }
 
