@@ -81,6 +81,11 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       await navigator.clipboard.writeText(text);
       showStatus('success', `✓ コピーしました（${fetchedUrls.length}件）`);
+      // フラッシュアニメーションを起動（再トリガーのため一旦クラスを外す）
+      status.classList.remove('flash');
+      // reflow を強制してアニメーションをリセット
+      void status.offsetWidth;
+      status.classList.add('flash');
     } catch (err) {
       showStatus('error', `コピーに失敗しました: ${err.message}`);
     }

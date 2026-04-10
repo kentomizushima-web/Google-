@@ -152,6 +152,17 @@ button:disabled {
   border: 1px solid #a8d5b5;
 }
 
+/* コピー成功時のフェードアニメーション */
+#status.success.flash {
+  animation: flashGreen 1.2s ease-out forwards;
+}
+
+@keyframes flashGreen {
+  0%   { background-color: #b7f0c8; border-color: #34a853; }
+  40%  { background-color: #b7f0c8; border-color: #34a853; }
+  100% { background-color: #e6f4ea; border-color: #a8d5b5; }
+}
+
 #status.error {
   background-color: #fce8e6;
   color: #c5221f;
@@ -179,7 +190,7 @@ button:disabled {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 220px;
+  max-height: 300px;
   overflow-y: auto;
 }
 
