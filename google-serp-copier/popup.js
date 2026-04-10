@@ -23,7 +23,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // 「URLを取得」ボタンの処理
   // -------------------------------------------------------
   fetchBtn.addEventListener('click', async () => {
-    const keyword  = keywordInput.value.trim();
+    // 全角スペース(　)を半角スペースに統一し、複数単語検索に対応
+    const keyword  = keywordInput.value.trim().replace(/　/g, ' ');
     const startRank = parseInt(startRankInput.value, 10);
     const endRank   = parseInt(endRankInput.value, 10);
 

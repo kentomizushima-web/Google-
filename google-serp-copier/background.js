@@ -100,6 +100,12 @@ async function fetchAllPages(keyword, startRank, endRank) {
 
     const { html, finalUrl, status } = await fetchGooglePage(keyword, pageStart);
 
+    // デバッグ用: HTMLの先頭2000字をService Workerコンソールに出力
+    // chrome://extensions → Service Worker を検査 → Consoleタブで確認できる
+    if (i === 0) {
+      console.log(`[SERP Copier] HTML先頭2000字:\n${html.substring(0, 2000)}`);
+    }
+
     // ボット・CAPTCHA検出
     if (isBotDetectionPage(html)) {
       throw new Error(
@@ -177,8 +183,13 @@ async function fetchGooglePage(keyword, start) {
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
       'Cache-Control': 'no-cache',
+      // Referer を付与することでブラウザの通常ナビゲーションに見せる
+      'Referer': 'https://www.google.co.jp/',
     },
-    credentials: 'omit',
+    // 'include' にしてChromeのGoogleセッションCookieを送る
+    // 'omit' だとCookieなしリクエストとなり、Google側が同意ページや
+    // 通常と異なるHTML形式を返す場合があり、URL抽出が0件になる原因となる
+    credentials: 'include',
   });
 
   if (!response.ok) {
@@ -201,6 +212,8 @@ async function fetchGooglePage(keyword, start) {
  *   B: href="/url?q=https%3A%2F%2F..."  URLエンコード形式
  *   C: href="https://..."  直接リンク形式（ダブル・シングルクォート両対応）
  *   D: data-href="https://..."  data属性形式
+ *   E: "url":"https://..."  JSON/JS埋め込みデータ形式（Google現行SERP対応）
+ *   F: "https:\/\/..."  バックスラッシュエスケープされたURL（JSソース内）
  *
  * @param {string} html - Google検索結果ページのHTMLテキスト
  * @returns {string[]} - 外部URLの配列（重複・Google内部リンク除外済み）
@@ -251,6 +264,19 @@ function extractUrls(html) {
   // --- パターンD: data-href="https://..." 属性 ---
   const patD = /data-href=["'](https?:\/\/[^"']+)["']/g;
   while ((m = patD.exec(html)) !== null) tryAdd(m[1]);
+
+  // --- パターンE: JSON/JS内の "url":"https://..." 形式 ---
+  // 現代のGoogle SERPはscriptタグ内のJSONにURLを埋め込む場合がある
+  // 例: {"url":"https://example.com/","title":"..."}
+  const patE = /"(?:url|href|link|canonicalUrl|originalUrl|targetUrl)"\s*:\s*"(https?:\/\/[^"\\]{10,})"/gi;
+  while ((m = patE.exec(html)) !== null) tryAdd(m[1]);
+
+  // --- パターンF: バックスラッシュエスケープURL "https:\/\/..." 形式 ---
+  // JSソース内で \/ エスケープされたURLを拾う（バックスラッシュを除去して正規化）
+  const patF = /"(https?:\\\/\\\/[^"\\]{10,})"/g;
+  while ((m = patF.exec(html)) !== null) tryAdd(m[1].replace(/\\\//g, '/'));
+
+  console.log(`[SERP Copier] extractUrls: ${results.length}件抽出`);
 
   return results;
 }
