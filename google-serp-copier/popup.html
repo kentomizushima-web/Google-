@@ -4,17 +4,57 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Google SERP Copier</title>
-  <!-- スタイルシートの読み込み -->
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <!-- メインコンテナ（今後の実装でUIを追加） -->
   <div id="app">
+
+    <!-- ヘッダー -->
     <h1>Google SERP Copier</h1>
-    <p>スケルトン（実装予定）</p>
+
+    <!-- 検索キーワード入力欄 -->
+    <div class="field">
+      <label for="keyword">検索キーワード</label>
+      <input type="text" id="keyword" placeholder="例: SEOツール おすすめ" />
+    </div>
+
+    <!-- 取得順位の範囲指定 -->
+    <div class="field field-row">
+      <div class="field-half">
+        <label for="startRank">取得開始順位</label>
+        <input type="number" id="startRank" value="51" min="1" max="1000" />
+      </div>
+      <div class="field-half">
+        <label for="endRank">取得終了順位</label>
+        <input type="number" id="endRank" value="100" min="1" max="1000" />
+      </div>
+    </div>
+
+    <!-- 操作ボタン -->
+    <div class="button-row">
+      <button id="fetchBtn">URLを取得</button>
+      <button id="copyBtn" disabled>クリップボードにコピー</button>
+    </div>
+
+    <!-- 進捗表示（取得中のみ表示） -->
+    <div id="progress" class="hidden">
+      <span class="spinner"></span>
+      <span id="progressText">取得中...</span>
+    </div>
+
+    <!-- ステータスメッセージ（成功・エラー通知） -->
+    <div id="status" class="hidden"></div>
+
+    <!-- 取得結果のURL一覧 -->
+    <div id="resultArea" class="hidden">
+      <div class="result-header">
+        <span id="resultCount"></span>
+      </div>
+      <ul id="urlList"></ul>
+    </div>
+
   </div>
 
-  <!-- ポップアップのロジックを読み込み -->
   <script src="popup.js"></script>
 </body>
 </html>

@@ -1,10 +1,14 @@
-/* ポップアップ全体のスタイル */
+/* ポップアップ全体のベーススタイル */
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   padding: 0;
   font-family: sans-serif;
-  width: 320px;
-  min-height: 100px;
+  font-size: 13px;
+  width: 360px;
   background-color: #ffffff;
   color: #333333;
 }
@@ -14,8 +18,189 @@ body {
   padding: 16px;
 }
 
-/* 見出し */
+/* ヘッダー */
 h1 {
-  font-size: 16px;
-  margin: 0 0 8px 0;
+  font-size: 15px;
+  font-weight: bold;
+  margin: 0 0 14px 0;
+  color: #1a73e8;
+  border-bottom: 2px solid #1a73e8;
+  padding-bottom: 8px;
+}
+
+/* フィールドグループ */
+.field {
+  margin-bottom: 10px;
+}
+
+/* ラベル */
+label {
+  display: block;
+  font-size: 12px;
+  color: #555;
+  margin-bottom: 4px;
+}
+
+/* テキスト・数値入力 */
+input[type="text"],
+input[type="number"] {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus {
+  border-color: #1a73e8;
+}
+
+/* 横並びフィールド（開始・終了順位） */
+.field-row {
+  display: flex;
+  gap: 10px;
+}
+
+.field-half {
+  flex: 1;
+}
+
+/* ボタン行 */
+.button-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+/* ボタン共通 */
+button {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.2s, opacity 0.2s;
+}
+
+/* 「URLを取得」ボタン */
+#fetchBtn {
+  background-color: #1a73e8;
+  color: #ffffff;
+}
+
+#fetchBtn:hover:not(:disabled) {
+  background-color: #1558b0;
+}
+
+/* 「クリップボードにコピー」ボタン */
+#copyBtn {
+  background-color: #34a853;
+  color: #ffffff;
+}
+
+#copyBtn:hover:not(:disabled) {
+  background-color: #267d3c;
+}
+
+/* ボタン無効状態 */
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 進捗表示 */
+#progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #555;
+  margin-bottom: 8px;
+}
+
+/* スピナーアニメーション */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #ccc;
+  border-top-color: #1a73e8;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ステータスメッセージ */
+#status {
+  padding: 7px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+#status.success {
+  background-color: #e6f4ea;
+  color: #267d3c;
+  border: 1px solid #a8d5b5;
+}
+
+#status.error {
+  background-color: #fce8e6;
+  color: #c5221f;
+  border: 1px solid #f5b4b1;
+}
+
+/* 結果エリア */
+#resultArea {
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* 結果ヘッダー（件数表示） */
+.result-header {
+  padding: 6px 10px;
+  background-color: #f5f5f5;
+  font-size: 12px;
+  color: #555;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+/* URLリスト */
+#urlList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+#urlList li {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: #1a73e8;
+  word-break: break-all;
+  border-bottom: 1px solid #f0f0f0;
+  line-height: 1.4;
+}
+
+#urlList li:last-child {
+  border-bottom: none;
+}
+
+#urlList li:nth-child(even) {
+  background-color: #fafafa;
+}
+
+/* 非表示ユーティリティ */
+.hidden {
+  display: none !important;
 }
